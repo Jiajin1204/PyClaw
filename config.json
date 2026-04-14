@@ -1,0 +1,23 @@
+{
+    "model": {
+        "provider": "openai",
+        "model": "gpt-4",
+        "api_key": "your-api-key-here",
+        "base_url": "https://api.openai.com/v1",
+        "max_tokens": 4096,
+        "temperature": 0.7
+    },
+    "system_prompt": "You are PyClaw, an AI agent with the ability to read files, write code, and execute commands. You can use these tools to accomplish complex tasks for the user.",
+    "session_dir": "sessions",
+    "memory_file": "MEMORY.md",
+    "tools": {
+        "exec": {
+            "timeout": 60,
+            "working_dir": "workspace"
+        }
+    },
+    "mcp": {
+        "enabled": false,
+        "servers": []
+    }
+}
