@@ -196,7 +196,7 @@ Do not include any other text before the [TOOL:] marker when you need to call a 
                 results = self._parse_and_execute_text_tools(text_content)
                 if results:
                     message.tool_results = results
-                    text_content += "\n\n" + self._format_tool_results(results)
+                    message.content = text_content + "\n\n" + self._format_tool_results(results)
 
             session.add_message(message)
             self.session_manager.save_session(session)
