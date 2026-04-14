@@ -1,11 +1,12 @@
 {
     "model": {
-        "provider": "openai",
-        "model": "gpt-4",
-        "api_key": "your-api-key-here",
-        "base_url": "https://api.openai.com/v1",
+        "provider": "anthropic",
+        "model": "MiniMax-M2.7",
+        "api_key": "xxx",
+        "base_url": "https://api.minimax.chat/anthropic/v1",
         "max_tokens": 4096,
-        "temperature": 0.7
+        "temperature": 0.7,
+        "supports_tools": false
     },
     "system_prompt": "You are PyClaw, an AI agent with the ability to read files, write code, and execute commands. You can use these tools to accomplish complex tasks for the user.",
     "session_dir": "sessions",

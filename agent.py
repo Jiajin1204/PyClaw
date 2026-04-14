@@ -1,5 +1,6 @@
 # agent.py
 import os
+import re
 import json
 from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime
@@ -12,6 +13,8 @@ from mcp import MCPManager
 
 class Agent:
     """PyClaw AI Agent."""
+
+    TEXT_TOOL_CALL_PATTERN = re.compile(r'\[TOOL:\s*(\w+)\s*(\{.*?\})\]', re.DOTALL)
 
     def __init__(self, config_path: str = "config.json"):
         self.config = self._load_config(config_path)
@@ -85,22 +88,25 @@ class Agent:
     def think(self, session: Session, user_input: str) -> str:
         """Process user input and return agent response."""
         messages = self._build_messages(session, user_input)
-        tools = self.tool_registry.to_openai_format()
 
-        if self.mcp_manager.clients:
-            mcp_tools = self.mcp_manager.get_all_tools()
-            for mcp_tool in mcp_tools:
-                tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": mcp_tool["name"],
-                        "description": mcp_tool["description"],
-                        "parameters": mcp_tool.get("input_schema", {})
-                    }
-                })
+        supports_tools = self.model_config.get("supports_tools", True)
+        tools = []
+        if supports_tools:
+            tools = self.tool_registry.to_openai_format()
+            if self.mcp_manager.clients:
+                mcp_tools = self.mcp_manager.get_all_tools()
+                for mcp_tool in mcp_tools:
+                    tools.append({
+                        "type": "function",
+                        "function": {
+                            "name": mcp_tool["name"],
+                            "description": mcp_tool["description"],
+                            "parameters": mcp_tool.get("input_schema", {})
+                        }
+                    })
 
         try:
-            response = self.model.chat(messages, tools)
+            response = self.model.chat(messages, tools if tools else None)
             assistant_message = self._process_response(response, session)
             return assistant_message.content
         except Exception as e:
@@ -109,9 +115,25 @@ class Agent:
     def _build_messages(self, session: Session, user_input: str) -> List[Dict[str, str]]:
         messages = []
 
+        supports_tools = self.model_config.get("supports_tools", True)
+
         system_content = self.system_prompt
         if self.memory:
             system_content += f"\n\n[Long-term Memory]\n{self.memory}"
+
+        if not supports_tools:
+            tool_names = list(self.tool_registry.list_tools())
+            system_content += f"""\n\n[Tool Calling Instructions]
+When you need to use a tool, respond with the tool call in this exact format:
+[TOOL: tool_name {{"arg1": "value1", "arg2": "value2"}}]
+
+Available tools: {', '.join(tool_names)}
+
+Example: [TOOL: read {{"file_path": "/tmp/test.txt"}}]
+Example: [TOOL: write {{"file_path": "/tmp/out.txt", "content": "hello"}}
+Example: [TOOL: exec {{"command": "ls -la", "language": "shell"}}
+
+Do not include any other text before the [TOOL:] marker when you need to call a tool."""
 
         messages.append({"role": "system", "content": system_content})
 
@@ -122,6 +144,8 @@ class Agent:
         return messages
 
     def _process_response(self, response: Dict[str, Any], session: Session) -> Message:
+        supports_tools = self.model_config.get("supports_tools", True)
+
         if "choices" in response:
             choice = response["choices"][0]
             content = choice.get("message", {}).get("content", "")
@@ -154,11 +178,50 @@ class Agent:
                 content=text_content,
                 timestamp=datetime.now().isoformat()
             )
+
+            if not supports_tools:
+                results = self._parse_and_execute_text_tools(text_content)
+                if results:
+                    message.tool_results = results
+                    text_content += "\n\n" + self._format_tool_results(results)
+
             session.add_message(message)
             self.session_manager.save_session(session)
             return message
 
         return Message(role="assistant", content="", timestamp=datetime.now().isoformat())
+
+    def _parse_and_execute_text_tools(self, text: str) -> List[Dict]:
+        """Parse text for [TOOL: name {...}] patterns and execute them."""
+        results = []
+        matches = self.TEXT_TOOL_CALL_PATTERN.findall(text)
+
+        for tool_name, args_str in matches:
+            try:
+                args = json.loads(args_str)
+                self._print_console(f"[TOOL] {tool_name}: {self._truncate(str(args))}")
+                tool = self.tool_registry.get(tool_name)
+                if tool:
+                    result = tool.execute(**args)
+                    results.append({
+                        "tool": tool_name,
+                        "args": args,
+                        "result": result.to_dict()
+                    })
+                else:
+                    results.append({
+                        "tool": tool_name,
+                        "args": args,
+                        "result": {"success": False, "content": "", "error": f"Unknown tool: {tool_name}"}
+                    })
+            except json.JSONDecodeError:
+                results.append({
+                    "tool": tool_name,
+                    "args": args_str,
+                    "result": {"success": False, "content": "", "error": "Invalid JSON in tool arguments"}
+                })
+
+        return results
 
     def _execute_tools(self, tool_calls: List[Dict]) -> List[Dict]:
         results = []
