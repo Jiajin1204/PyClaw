@@ -14,8 +14,6 @@ from mcp import MCPManager
 class Agent:
     """PyClaw AI Agent."""
 
-    TEXT_TOOL_CALL_PATTERN = re.compile(r'\[TOOL:\s*(\w+)\s*(\{.*?\})\]', re.DOTALL)
-
     def __init__(self, config_path: str = "config.json"):
         self.config = self._load_config(config_path)
         self.model_config = self.config.get("model", {})
@@ -209,9 +207,27 @@ Do not include any other text before the [TOOL:] marker when you need to call a 
     def _parse_and_execute_text_tools(self, text: str) -> List[Dict]:
         """Parse text for [TOOL: name {...}] patterns and execute them."""
         results = []
-        matches = self.TEXT_TOOL_CALL_PATTERN.findall(text)
+        pattern = re.compile(r'\[TOOL:\s*(\w+)\s*\{')
 
-        for tool_name, args_str in matches:
+        for match in pattern.finditer(text):
+            tool_name = match.group(1)
+            start = match.end() - 1  # position of opening {
+
+            # Find matching closing ]
+            depth = 0
+            end = start
+            for i in range(start, len(text)):
+                if text[i] == '{':
+                    depth += 1
+                elif text[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end = i
+                        break
+
+            args_str = text[start:end+1]
+            # Escape actual newlines which are invalid in JSON
+            args_str = args_str.replace('\n', '\\n').replace('\r', '\\r')
             try:
                 args = json.loads(args_str)
                 self._print_console(f"[TOOL] {tool_name}: {self._truncate(str(args))}")
@@ -229,11 +245,11 @@ Do not include any other text before the [TOOL:] marker when you need to call a 
                         "args": args,
                         "result": {"success": False, "content": "", "error": f"Unknown tool: {tool_name}"}
                     })
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
                 results.append({
                     "tool": tool_name,
                     "args": args_str,
-                    "result": {"success": False, "content": "", "error": "Invalid JSON in tool arguments"}
+                    "result": {"success": False, "content": "", "error": f"Invalid JSON: {str(e)}"}
                 })
 
         return results
