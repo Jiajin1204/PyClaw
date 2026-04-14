@@ -88,6 +88,7 @@ class Agent:
         messages = self._build_messages(session, user_input)
 
         supports_tools = self.model_config.get("supports_tools", True)
+        provider = self.model_config.get("provider", "openai")
 
         max_iterations = 10
         iteration = 0
@@ -97,18 +98,27 @@ class Agent:
 
             tools = []
             if supports_tools:
-                tools = self.tool_registry.to_openai_format()
+                if provider == "anthropic":
+                    tools = self.tool_registry.to_anthropic_format()
+                else:
+                    tools = self.tool_registry.to_openai_format()
                 if self.mcp_manager.clients:
-                    mcp_tools = self.mcp_manager.get_all_tools()
-                    for mcp_tool in mcp_tools:
-                        tools.append({
-                            "type": "function",
-                            "function": {
+                    for mcp_tool in self.mcp_manager.get_all_tools():
+                        if provider == "anthropic":
+                            tools.append({
                                 "name": mcp_tool["name"],
                                 "description": mcp_tool["description"],
-                                "parameters": mcp_tool.get("input_schema", {})
-                            }
-                        })
+                                "input_schema": mcp_tool.get("input_schema", {})
+                            })
+                        else:
+                            tools.append({
+                                "type": "function",
+                                "function": {
+                                    "name": mcp_tool["name"],
+                                    "description": mcp_tool["description"],
+                                    "parameters": mcp_tool.get("input_schema", {})
+                                }
+                            })
 
             try:
                 response = self.model.chat(messages, tools if tools else None)
