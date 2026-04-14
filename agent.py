@@ -230,19 +230,33 @@ Do not include any other text before the [TOOL:] marker when you need to call a 
             self.session_manager.save_session(session)
             return message
         elif "content" in response:
-            content = response.get("content", [])
+            content_blocks = response.get("content", [])
             text_content = ""
-            for block in content:
+            tool_calls = []
+
+            for block in content_blocks:
                 if block.get("type") == "text":
                     text_content += block.get("text", "")
+                elif block.get("type") == "tool_use":
+                    tool_calls.append({
+                        "function": {
+                            "name": block.get("name", ""),
+                            "arguments": block.get("input", {})
+                        }
+                    })
 
             message = Message(
                 role="assistant",
                 content=text_content,
-                timestamp=datetime.now().isoformat()
+                timestamp=datetime.now().isoformat(),
+                tool_calls=tool_calls if tool_calls else None
             )
 
-            if not supports_tools:
+            if tool_calls:
+                results = self._execute_tools(tool_calls)
+                message.tool_results = results
+                message.content = text_content + "\n\n" + self._format_tool_results(results)
+            elif not supports_tools:
                 results = self._parse_and_execute_text_tools(text_content)
                 if results:
                     message.tool_results = results
