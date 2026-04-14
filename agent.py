@@ -90,7 +90,11 @@ class Agent:
         supports_tools = self.model_config.get("supports_tools", True)
 
         max_iterations = 10
-        for iteration in range(max_iterations):
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+
             tools = []
             if supports_tools:
                 tools = self.tool_registry.to_openai_format()
@@ -114,14 +118,16 @@ class Agent:
             assistant_message = self._process_response(response, session, supports_tools)
 
             # If no tool calls were made, we're done
-            if not assistant_message.tool_calls and (not assistant_message.tool_results or len(assistant_message.tool_results) == 0):
+            has_tool_calls = bool(assistant_message.tool_calls)
+            has_tool_results = bool(assistant_message.tool_results and len(assistant_message.tool_results) > 0)
+
+            if not has_tool_calls and not has_tool_results:
                 return assistant_message.content
 
-            # Add assistant message to messages
-            messages.append({"role": "assistant", "content": assistant_message.content})
-
-            # Add tool results as messages
-            if assistant_message.tool_results:
+            if not has_tool_calls and has_tool_results:
+                # Text-based tools (MiniMax): don't re-execute same tools
+                # Add results to conversation and continue
+                messages.append({"role": "assistant", "content": assistant_message.content})
                 for tr in assistant_message.tool_results:
                     tool_name = tr["tool"]
                     result = tr["result"]
@@ -131,11 +137,27 @@ class Agent:
                         content = f"Error: {result.get('error', 'Unknown error')}"
                     messages.append({
                         "role": "user",
-                        "content": f"[TOOL RESULT] {tool_name}: {content}"
+                        "content": f"[TOOL RESULT] {tool_name}:\n{content}"
                     })
+                # Clear tool_results to prevent re-execution in next _process_response
+                assistant_message.tool_results = []
+                continue
 
-            # Check if task is complete (no more tool calls)
-            # Continue loop to let model see results and decide next step
+            # Standard tool calls (OpenAI): execute and loop
+            messages.append({"role": "assistant", "content": assistant_message.content})
+
+            if has_tool_results:
+                for tr in assistant_message.tool_results:
+                    tool_name = tr["tool"]
+                    result = tr["result"]
+                    if result["success"]:
+                        content = result.get("content", "")
+                    else:
+                        content = f"Error: {result.get('error', 'Unknown error')}"
+                    messages.append({
+                        "role": "user",
+                        "content": f"[TOOL RESULT] {tool_name}:\n{content}"
+                    })
 
         return assistant_message.content + "\n\n(Max iterations reached)"
 
