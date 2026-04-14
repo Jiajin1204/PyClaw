@@ -117,9 +117,19 @@ class Agent:
 
         supports_tools = self.model_config.get("supports_tools", True)
 
+        import platform
+        import os
+        from datetime import datetime
+
+        os_info = f"{platform.system()} {platform.release()} ({platform.machine()})"
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cwd = os.getcwd()
+
         system_content = self.system_prompt
+        system_content += f"\n\n[System Info]\nOS: {os_info}\nCurrent Time: {current_time}\nWorking Directory: {cwd}\n"
+
         if self.memory:
-            system_content += f"\n\n[Long-term Memory]\n{self.memory}"
+            system_content += f"\n[Long-term Memory]\n{self.memory}"
 
         if not supports_tools:
             tool_names = list(self.tool_registry.list_tools())
@@ -129,9 +139,14 @@ When you need to use a tool, respond with the tool call in this exact format:
 
 Available tools: {', '.join(tool_names)}
 
-Example: [TOOL: read {{"file_path": "/tmp/test.txt"}}]
-Example: [TOOL: write {{"file_path": "/tmp/out.txt", "content": "hello"}}
-Example: [TOOL: exec {{"command": "ls -la", "language": "shell"}}
+IMPORTANT: Windows commands should use Python execution by default (language="python").
+For file listing, use: exec {{"command": "import os; print(os.listdir('.'))", "language": "python"}}
+For file reading, use: read {{"file_path": "filename"}}
+For directory listing on any OS, use Python: exec {{"command": "import os; [print(f) for f in os.listdir('.')]", "language": "python"}}
+
+Example: [TOOL: read {{"file_path": "config.json"}}]
+Example: [TOOL: write {{"file_path": "output.txt", "content": "hello"}}]
+Example: [TOOL: exec {{"command": "print('Hello from Python!')", "language": "python"}}]
 
 Do not include any other text before the [TOOL:] marker when you need to call a tool."""
 

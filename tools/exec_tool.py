@@ -1,5 +1,6 @@
 # tools/exec_tool.py
 import os
+import sys
 import subprocess
 import tempfile
 from typing import Dict, Any
@@ -106,9 +107,8 @@ class ExecTool(Tool):
             temp_file = f.name
 
         try:
-            python_cmd = "python" if not self.is_windows else "python"
             result = subprocess.run(
-                [python_cmd, temp_file],
+                [sys.executable, temp_file],
                 capture_output=True,
                 text=True,
                 cwd=work_dir,
