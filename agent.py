@@ -84,31 +84,60 @@ class Agent:
         return text
 
     def think(self, session: Session, user_input: str) -> str:
-        """Process user input and return agent response."""
+        """Process user input using ReAct pattern - loop until task is complete."""
         messages = self._build_messages(session, user_input)
 
         supports_tools = self.model_config.get("supports_tools", True)
-        tools = []
-        if supports_tools:
-            tools = self.tool_registry.to_openai_format()
-            if self.mcp_manager.clients:
-                mcp_tools = self.mcp_manager.get_all_tools()
-                for mcp_tool in mcp_tools:
-                    tools.append({
-                        "type": "function",
-                        "function": {
-                            "name": mcp_tool["name"],
-                            "description": mcp_tool["description"],
-                            "parameters": mcp_tool.get("input_schema", {})
-                        }
+
+        max_iterations = 10
+        for iteration in range(max_iterations):
+            tools = []
+            if supports_tools:
+                tools = self.tool_registry.to_openai_format()
+                if self.mcp_manager.clients:
+                    mcp_tools = self.mcp_manager.get_all_tools()
+                    for mcp_tool in mcp_tools:
+                        tools.append({
+                            "type": "function",
+                            "function": {
+                                "name": mcp_tool["name"],
+                                "description": mcp_tool["description"],
+                                "parameters": mcp_tool.get("input_schema", {})
+                            }
+                        })
+
+            try:
+                response = self.model.chat(messages, tools if tools else None)
+            except Exception as e:
+                return f"Error: {str(e)}"
+
+            assistant_message = self._process_response(response, session, supports_tools)
+
+            # If no tool calls were made, we're done
+            if not assistant_message.tool_calls and (not assistant_message.tool_results or len(assistant_message.tool_results) == 0):
+                return assistant_message.content
+
+            # Add assistant message to messages
+            messages.append({"role": "assistant", "content": assistant_message.content})
+
+            # Add tool results as messages
+            if assistant_message.tool_results:
+                for tr in assistant_message.tool_results:
+                    tool_name = tr["tool"]
+                    result = tr["result"]
+                    if result["success"]:
+                        content = result.get("content", "")
+                    else:
+                        content = f"Error: {result.get('error', 'Unknown error')}"
+                    messages.append({
+                        "role": "user",
+                        "content": f"[TOOL RESULT] {tool_name}: {content}"
                     })
 
-        try:
-            response = self.model.chat(messages, tools if tools else None)
-            assistant_message = self._process_response(response, session)
-            return assistant_message.content
-        except Exception as e:
-            return f"Error: {str(e)}"
+            # Check if task is complete (no more tool calls)
+            # Continue loop to let model see results and decide next step
+
+        return assistant_message.content + "\n\n(Max iterations reached)"
 
     def _build_messages(self, session: Session, user_input: str) -> List[Dict[str, str]]:
         messages = []
@@ -156,8 +185,7 @@ Do not include any other text before the [TOOL:] marker when you need to call a 
         messages.append({"role": "user", "content": user_input})
         return messages
 
-    def _process_response(self, response: Dict[str, Any], session: Session) -> Message:
-        supports_tools = self.model_config.get("supports_tools", True)
+    def _process_response(self, response: Dict[str, Any], session: Session, supports_tools: bool = True) -> Message:
 
         if "choices" in response:
             choice = response["choices"][0]
