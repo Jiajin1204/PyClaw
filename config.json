@@ -6,7 +6,9 @@
         "base_url": "https://api.minimax.chat/anthropic/v1",
         "max_tokens": 4096,
         "temperature": 0.7,
-        "supports_tools": false
+        "supports_tools": false,
+        "max_retries": 3,
+        "retry_delay": 2
     },
     "system_prompt": "You are PyClaw, an AI agent with the ability to read files, write code, and execute commands. You can use these tools to accomplish complex tasks for the user.",
     "session_dir": "sessions",
