@@ -43,10 +43,19 @@ class Agent:
                 self.mcp_manager.add_server(name, server)
 
     def _load_config(self, path: str) -> Dict[str, Any]:
+        config = {}
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        return {}
+                config = json.load(f)
+
+        # Override with environment variable if set
+        env_key = os.environ.get("PYCLAW_LLM_KEY", "")
+        if env_key:
+            if "model" not in config:
+                config["model"] = {}
+            config["model"]["api_key"] = env_key
+
+        return config
 
     def _create_model_adapter(self) -> ModelAdapter:
         provider = self.model_config.get("provider", "openai")
