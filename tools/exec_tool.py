@@ -8,28 +8,12 @@ from .base import Tool, ToolResult
 
 
 class ExecTool(Tool):
-    """Tool for executing Python code and shell commands."""
-
-    UNIX_TO_WINDOWS = {
-        "ls": "dir",
-        "ls -la": "dir /a",
-        "ll": "dir /a",
-        "pwd": "cd",
-        "cat": "type",
-        "rm": "del",
-        "cp": "copy",
-        "mv": "move",
-        "mkdir": "mkdir",
-        "touch": "echo. >",
-        "clear": "cls",
-        "which": "where",
-    }
+    """Tool for executing shell commands and Python scripts."""
 
     def __init__(self, config: Dict[str, Any] = None):
         super().__init__(config)
         self.timeout = self.config.get("timeout", 60)
         self.working_dir = self.config.get("working_dir", "workspace")
-        self.is_windows = os.name == "nt"
 
     @property
     def name(self) -> str:
@@ -37,7 +21,7 @@ class ExecTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Execute Python code or shell commands. Returns stdout/stderr."
+        return "Execute shell commands or Python code. Returns stdout and stderr."
 
     @property
     def parameters(self) -> Dict[str, Any]:
@@ -50,27 +34,15 @@ class ExecTool(Tool):
                 },
                 "language": {
                     "type": "string",
-                    "enum": ["python", "shell"],
-                    "description": "Language to execute in",
-                    "default": "python"
+                    "enum": ["shell", "python"],
+                    "description": "Execute as shell command or Python code",
+                    "default": "shell"
                 }
             },
             "required": ["command"]
         }
 
-    def _translate_command(self, cmd: str) -> str:
-        """Translate Unix command to Windows equivalent."""
-        if not self.is_windows:
-            return cmd
-        cmd_stripped = cmd.strip()
-        for unix_cmd, win_cmd in self.UNIX_TO_WINDOWS.items():
-            if cmd_stripped == unix_cmd:
-                return win_cmd
-            if cmd_stripped.startswith(unix_cmd + " "):
-                return win_cmd + cmd_stripped[len(unix_cmd):]
-        return cmd
-
-    def execute(self, command: str, language: str = "python") -> ToolResult:
+    def execute(self, command: str, language: str = "shell") -> ToolResult:
         """Execute a command."""
         try:
             work_dir = os.path.expanduser(self.working_dir)
@@ -80,9 +52,8 @@ class ExecTool(Tool):
             if language == "python":
                 result = self._run_python(command, work_dir)
             else:
-                cmd = self._translate_command(command)
                 result = subprocess.run(
-                    cmd,
+                    command,
                     shell=True,
                     cwd=work_dir,
                     capture_output=True,

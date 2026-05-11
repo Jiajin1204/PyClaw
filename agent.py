@@ -198,14 +198,15 @@ When you need to use a tool, respond with the tool call in this exact format:
 
 Available tools: {', '.join(tool_names)}
 
-IMPORTANT: Windows commands should use Python execution by default (language="python").
-For file listing, use: exec {{"command": "import os; print(os.listdir('.'))", "language": "python"}}
-For file reading, use: read {{"file_path": "filename"}}
-For directory listing on any OS, use Python: exec {{"command": "import os; [print(f) for f in os.listdir('.')]", "language": "python"}}
+For exec tool:
+- Default (language="shell"): executes shell commands directly
+- language="python": executes Python code
 
-Example: [TOOL: read {{"file_path": "config.json"}}]
-Example: [TOOL: write {{"file_path": "output.txt", "content": "hello"}}]
-Example: [TOOL: exec {{"command": "print('Hello from Python!')", "language": "python"}}]
+Examples:
+- List files: exec {{"command": "ls -la", "language": "shell"}}
+- Read file: read {{"file_path": "config.json"}}
+- Write file: write {{"file_path": "output.txt", "content": "hello"}}
+- Run Python: exec {{"command": "print('Hello')", "language": "python"}}
 
 Do not include any other text before the [TOOL:] marker when you need to call a tool."""
 
